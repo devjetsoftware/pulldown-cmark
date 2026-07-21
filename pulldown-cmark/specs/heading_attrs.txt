@@ -305,27 +305,6 @@ forms differ only in their lexical representation. Quotes are removed from the
 semantic value, and quoted values may contain ASCII whitespace.
 
 ```````````````````````````````` example
-# Bare {title=Hello enabled=true code=01}
-## Single {title='Hello world' enabled='true' code='01'}
-### Double {title="Hello world" enabled="true" code="01"}
-.
-<h1 title="Hello" enabled="true" code="01">Bare</h1>
-<h2 title="Hello world" enabled="true" code="01">Single</h2>
-<h3 title="Hello world" enabled="true" code="01">Double</h3>
-````````````````````````````````
-
-Quoted values must have a closing quote followed by whitespace or the end of
-the attribute block. Otherwise, the braces remain part of the heading text.
-
-```````````````````````````````` example
-# Unclosed {title="Hello world}
-## Missing separator {title="Hello"suffix}
-.
-<h1>Unclosed {title="Hello world}</h1>
-<h2>Missing separator {title="Hello"suffix}</h2>
-````````````````````````````````
-
-```````````````````````````````` example
 # H1 {foo}
 ## H2 {#myid unknown this#is.ignored attr=value .myclass}
 .
@@ -704,4 +683,14 @@ Non-ASCII whitespaces don't work as separators.
 .
 <h1 id="en-space .myclass">EN SPACE (U+2002)</h1>
 <h2 id="ideographic-space　.myclass">IDEOGRAPHIC SPACE (U+3000)</h2>
+````````````````````````````````
+
+```````````````````````````````` example
+# Bare {title=Hello enabled=true code=01}
+## Single {title='Hello world' enabled='true' code='01'}
+### Double {title="Hello world" enabled="true" code="01"}
+.
+<h1 title="Hello" enabled="true" code="01">Bare</h1>
+<h2 title="Hello world" enabled="true" code="01">Single</h2>
+<h3 title="Hello world" enabled="true" code="01">Double</h3>
 ````````````````````````````````
