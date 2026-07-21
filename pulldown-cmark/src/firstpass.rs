@@ -170,9 +170,14 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                         }
                     }
                 }
-            } else if let Some((indent, child, item)) = self
+            } else if let Some((indent, child, item)) = (self
                 .options
                 .contains(Options::ENABLE_DEFINITION_LIST)
+                && !(self.options.contains(Options::ENABLE_CONTAINER_EXTENSIONS)
+                    && scan_ch_repeat(
+                        &bytes[(start_ix + line_start.bytes_scanned())..],
+                        b':',
+                    ) > 2))
                 .then(|| {
                     self.tree
                         .cur()
@@ -313,6 +318,14 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                         let line_end = summary_start + scan_nextline(&bytes[summary_start..]);
                         let summary_end = line_end
                             - scan_rev_while(&bytes[summary_start..line_end], is_ascii_whitespace);
+                        // An unindented container starts a new block after a list. In
+                        // particular, close a definition-list root whose final
+                        // definition was already popped by `scan_containers`; leaving
+                        // that root open makes definition-list fixup discard subsequent
+                        // sibling containers. Properly indented containers still have a
+                        // list item/definition at the top of the spine, so they remain
+                        // nested.
+                        self.finish_list(start_ix);
                         if kind.eq_ignore_ascii_case("spoiler") {
                             let summary = unescape(
                                 &self.text[summary_start..summary_end],
