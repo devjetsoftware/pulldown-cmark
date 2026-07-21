@@ -161,10 +161,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                 .options
                 .contains(Options::ENABLE_DEFINITION_LIST)
                 && !(self.options.contains(Options::ENABLE_CONTAINER_EXTENSIONS)
-                    && scan_ch_repeat(
-                        &bytes[(start_ix + line_start.bytes_scanned())..],
-                        b':',
-                    ) > 2))
+                    && scan_ch_repeat(&bytes[(start_ix + line_start.bytes_scanned())..], b':') > 2))
                 .then(|| {
                     self.tree
                         .cur()
@@ -2192,7 +2189,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
 
     /// Extracts and parses a heading attribute block if exists.
     ///
-    /// Returns `(end_offset_of_heading_content, (id, classes))`.
+    /// Returns the end offset of heading content and any parsed attributes.
     ///
     /// If `header_end` is less than or equal to `header_start`, the given
     /// input is considered as empty.
@@ -2210,12 +2207,17 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         let (content_len, attr_block_range_rel) =
             extract_attribute_block_content_from_header_text(header_bytes);
         let content_end = header_start + content_len;
-        let attrs = attr_block_range_rel.and_then(|r| {
+        let Some(attrs) = attr_block_range_rel.and_then(|r| {
             parse_inside_attribute_block(
                 &self.text[(header_start + r.start)..(header_start + r.end)],
             )
-        });
-        (content_end, attrs)
+        }) else {
+            // A trailing brace pair is only an attribute block when its contents
+            // form a valid attribute list. Preserve malformed lists as heading
+            // content instead of silently dropping them.
+            return (header_end, None);
+        };
+        (content_end, Some(attrs))
     }
 }
 
@@ -2702,21 +2704,17 @@ fn extract_attribute_block_content_from_header_text(
     (attr_block_open, Some(ix..attr_block_close))
 }
 
-/// Parses an attribute block content, such as `.class1 #id .class2`.
+/// Parses attribute block content, such as `.class1 #id title="Hello world"`.
 ///
-/// Returns `(id, classes)`.
+/// Returns the parsed attributes, or `None` when the list is malformed.
 ///
 /// It is callers' responsibility to find opening and closing characters of the attribute
 /// block. Usually [`extract_attribute_block_content_from_header_text`] function does it for you.
 ///
-/// Note that this parsing requires explicit whitespace separators between
-/// attributes. This is intentional design with the reasons below:
-///
-/// * to keep conversion simple and easy to understand for any possible input,
-/// * to avoid adding less obvious conversion rule that can reduce compatibility
-///   with other implementations more, and
-/// * to follow the major design of implementations with the support for the
-///   attribute blocks extension (as of this writing).
+/// Attributes require explicit whitespace separators. Custom attribute values
+/// may be bare, single-quoted, or double-quoted. Quotes are lexical delimiters
+/// and are not included in the returned value; quoted values may contain ASCII
+/// whitespace.
 ///
 /// See also: [`Options::ENABLE_HEADING_ATTRIBUTES`].
 ///
@@ -2726,27 +2724,98 @@ fn parse_inside_attribute_block(inside_attr_block: &str) -> Option<HeadingAttrib
     let mut classes = Vec::new();
     let mut attrs = Vec::new();
 
-    for attr in inside_attr_block.split_ascii_whitespace() {
-        // iterator returned by `str::split_ascii_whitespace` never emits empty
-        // strings, so taking first byte won't panic.
-        if attr.len() > 1 {
-            let first_byte = attr.as_bytes()[0];
-            if first_byte == b'#' {
-                id = Some(attr[1..].into());
-            } else if first_byte == b'.' {
-                classes.push(attr[1..].into());
-            } else {
-                let split = attr.split_once('=');
-                if let Some((key, value)) = split {
-                    attrs.push((key.into(), Some(value.into())));
+    let bytes = inside_attr_block.as_bytes();
+    let mut cursor = 0;
+    while cursor < bytes.len() {
+        cursor = skip_heading_attribute_whitespace(bytes, cursor);
+        if cursor == bytes.len() {
+            break;
+        }
+
+        if matches!(bytes[cursor], b'#' | b'.') {
+            let prefix = bytes[cursor];
+            let value_start = cursor + 1;
+            cursor = value_start;
+            while bytes
+                .get(cursor)
+                .is_some_and(|byte| !byte.is_ascii_whitespace())
+            {
+                cursor += 1;
+            }
+            if cursor != value_start {
+                let value = &inside_attr_block[value_start..cursor];
+                if prefix == b'#' {
+                    id = Some(value.into());
                 } else {
-                    attrs.push((attr.into(), None));
+                    classes.push(value.into());
                 }
             }
+            continue;
         }
+
+        let key_start = cursor;
+        while bytes
+            .get(cursor)
+            .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'=')
+        {
+            if matches!(bytes[cursor], b'\'' | b'"') {
+                return None;
+            }
+            cursor += 1;
+        }
+        if cursor == key_start {
+            return None;
+        }
+        let key = &inside_attr_block[key_start..cursor];
+
+        if bytes.get(cursor) != Some(&b'=') {
+            attrs.push((key.into(), None));
+            continue;
+        }
+
+        cursor += 1;
+        let (value, next) = parse_heading_attribute_value(inside_attr_block, cursor)?;
+        cursor = next;
+        if bytes
+            .get(cursor)
+            .is_some_and(|byte| !byte.is_ascii_whitespace())
+        {
+            return None;
+        }
+        attrs.push((key.into(), Some(value.into())));
     }
 
     Some(HeadingAttributes { id, classes, attrs })
+}
+
+fn parse_heading_attribute_value(input: &str, start: usize) -> Option<(&str, usize)> {
+    let bytes = input.as_bytes();
+    let Some(&first) = bytes.get(start) else {
+        // Preserve the existing `key=` spelling as an explicit empty value.
+        return Some((&input[start..start], start));
+    };
+
+    if matches!(first, b'\'' | b'"') {
+        let value_start = start + 1;
+        let close = bytes[value_start..]
+            .iter()
+            .position(|byte| *byte == first)?
+            + value_start;
+        return Some((&input[value_start..close], close + 1));
+    }
+
+    let end = bytes[start..]
+        .iter()
+        .position(u8::is_ascii_whitespace)
+        .map_or(bytes.len(), |offset| start + offset);
+    Some((&input[start..end], end))
+}
+
+fn skip_heading_attribute_whitespace(bytes: &[u8], mut cursor: usize) -> usize {
+    while bytes.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+        cursor += 1;
+    }
+    cursor
 }
 
 #[cfg(all(target_arch = "x86_64", feature = "simd"))]

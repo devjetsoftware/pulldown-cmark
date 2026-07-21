@@ -186,6 +186,8 @@ pub enum Tag<'a> {
     /// The identifier is prefixed with `#` and the last one in the attributes
     /// list is chosen, classes are prefixed with `.` and custom attributes
     /// have no prefix and can optionally have a value (`myattr` or `myattr=myvalue`).
+    /// Values may be bare, single-quoted, or double-quoted; quotes delimit the
+    /// value and allow it to contain whitespace, but are not part of the value.
     ///
     /// `id`, `classes` and `attrs` are only parsed and populated with [`Options::ENABLE_HEADING_ATTRIBUTES`], `None` or empty otherwise.
     Heading {
@@ -718,11 +720,11 @@ bitflags::bitflags! {
         const ENABLE_SMART_PUNCTUATION = 1 << 5;
         /// Extension to allow headings to have ID and classes.
         ///
-        /// `# text { #id .class1 .class2 myattr other_attr=myvalue }`
+        /// `# text { #id .class1 .class2 myattr title="Hello world" }`
         /// is interpreted as a level 1 heading
         /// with the content `text`, ID `id`, classes `class1` and `class2` and
         /// custom attributes `myattr` (without value) and
-        /// `other_attr` with value `myvalue`.
+        /// `title` with value `Hello world`.
         /// Note that ID, classes, and custom attributes should be space-separated.
         const ENABLE_HEADING_ATTRIBUTES = 1 << 6;
         /// Metadata blocks in YAML style, i.e.:
