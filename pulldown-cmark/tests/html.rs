@@ -4,6 +4,38 @@
 use pulldown_cmark::{html, BrokenLink, Options, Parser};
 
 #[test]
+fn container_opener_takes_precedence_over_definition_list_marker() {
+    let input = concat!(
+        "Term\n: Definition.\n\n",
+        "::: note\nInside.\n:::\n\n",
+        "::: tip\nStill outside the definition list.\n:::\n",
+    );
+    let options = Options::ENABLE_CONTAINER_EXTENSIONS | Options::ENABLE_DEFINITION_LIST;
+    let mut output = String::new();
+
+    html::push_html(&mut output, Parser::new_ext(input, options));
+
+    assert_eq!(
+        output,
+        concat!(
+            "<dl>\n<dt>Term</dt>\n<dd>Definition.</dd>\n</dl>\n",
+            "<div class=\"note\">\n<p>Inside.</p>\n</div>\n",
+            "<div class=\"tip\">\n<p>Still outside the definition list.</p>\n</div>\n",
+        )
+    );
+}
+
+#[test]
+fn disabled_container_extension_does_not_interrupt_paragraphs() {
+    let input = "Before\n::: note\nAfter\n";
+    let mut output = String::new();
+
+    html::push_html(&mut output, Parser::new(input));
+
+    assert_eq!(output, "<p>Before\n::: note\nAfter</p>\n");
+}
+
+#[test]
 fn html_test_1() {
     let original = r##"Little header
 
