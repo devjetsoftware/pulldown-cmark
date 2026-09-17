@@ -606,5 +606,5 @@ fn heading_attrs_test_43() {
 <h3 title="Hello world" enabled="true" code="01">Double</h3>
 "##;
 
-    test_markdown_html(original, expected, false, false, false, false, false, false, false);
+    test_markdown_html(original, expected, false, false, false, false, false, false, false, false, false);
 }

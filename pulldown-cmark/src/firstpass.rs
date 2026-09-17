@@ -174,10 +174,7 @@ impl<'a, 'b> FirstPass<'a, 'b> {
                 .options
                 .contains(Options::ENABLE_DEFINITION_LIST)
                 && !(self.options.contains(Options::ENABLE_CONTAINER_EXTENSIONS)
-                    && scan_ch_repeat(
-                        &bytes[(start_ix + line_start.bytes_scanned())..],
-                        b':',
-                    ) > 2))
+                    && scan_ch_repeat(&bytes[(start_ix + line_start.bytes_scanned())..], b':') > 2))
                 .then(|| {
                     self.tree
                         .cur()
@@ -364,6 +361,14 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         }
 
         if self.options.contains(Options::ENABLE_CONTAINER_EXTENSIONS) {
+            // A dedented closer must end a completed list before looking for
+            // its enclosing directive, just as a sibling opener does.
+            if line_start
+                .clone()
+                .scan_closing_container_extensions_fence(3)
+            {
+                self.finish_list(start_ix);
+            }
             let mut pop_count = None;
             for (i, &node_ix) in self.tree.walk_spine().rev().enumerate() {
                 match self.tree[node_ix].item.body {
@@ -3005,7 +3010,10 @@ fn parse_inside_attribute_block(inside_attr_block: &str) -> Option<HeadingAttrib
                     [b'"', .., b'"'] | [b'\'', .., b'\''] => &value[1..value.len() - 1],
                     _ => value,
                 };
-                attrs.push((CowStr::from_replace_nuls(key), Some(CowStr::from_replace_nuls(value))));
+                attrs.push((
+                    CowStr::from_replace_nuls(key),
+                    Some(CowStr::from_replace_nuls(value)),
+                ));
             } else {
                 attrs.push((CowStr::from_replace_nuls(attr), None));
             }
