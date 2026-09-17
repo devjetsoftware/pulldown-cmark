@@ -400,3 +400,17 @@ fn issue_1056() {
 
     assert_eq!(expected, s);
 }
+
+#[test]
+fn container_closer_after_list_preserves_parent_and_following_sibling() {
+    for separator in ["", "\n"] {
+        let input = format!("::: hero\nIntro.\n\n::: actions\n- [First](https://example.com)\n- [Second](#next)\n{separator}:::\n:::\n\n## Next\n");
+        let mut output = String::new();
+        html::push_html(&mut output, Parser::new_ext(&input, Options::ENABLE_CONTAINER_EXTENSIONS));
+        assert_eq!(output, concat!(
+            "<div class=\"hero\">\n<p>Intro.</p>\n<div class=\"actions\">\n<ul>\n",
+            "<li><a href=\"https://example.com\">First</a></li>\n",
+            "<li><a href=\"#next\">Second</a></li>\n</ul>\n</div>\n</div>\n<h2>Next</h2>\n",
+        ));
+    }
+}

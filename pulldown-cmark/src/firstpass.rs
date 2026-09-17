@@ -349,6 +349,11 @@ impl<'a, 'b> FirstPass<'a, 'b> {
         }
 
         if self.options.contains(Options::ENABLE_CONTAINER_EXTENSIONS) {
+            // A dedented closer must end a completed list before looking for
+            // its enclosing directive, just as a sibling opener does.
+            if line_start.clone().scan_closing_container_extensions_fence(3) {
+                self.finish_list(start_ix);
+            }
             let mut pop_count = None;
             for (i, &node_ix) in self.tree.walk_spine().rev().enumerate() {
                 match self.tree[node_ix].item.body {
